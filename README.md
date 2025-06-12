@@ -1,3 +1,7 @@
+# THIS IS NOT YET WORKING AND JUST A WIP
+If you want a working version, check back here from time to time
+If you want to contribute, message me
+
 # JellyDemon - Intelligent Jellyfin Bandwidth Management
 
 A Python daemon that automatically manages Jellyfin user bandwidth limits based on real-time network demand and external streaming activity.
