@@ -72,6 +72,13 @@ class JellyDemon:
         try:
             usage = self.openwrt.get_bandwidth_usage()
 
+            if self.config.router.jellyfin_ip:
+                jf_usage = self.openwrt.get_bandwidth_usage(self.config.router.jellyfin_ip)
+                usage = max(usage - jf_usage, 0)
+                self.logger.debug(
+                    f"Subtracting Jellyfin traffic {jf_usage:.2f} Mbps from total"
+                )
+
             now = time.time()
             self.bandwidth_history.append((now, usage))
 

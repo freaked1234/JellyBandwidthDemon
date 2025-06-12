@@ -4,7 +4,7 @@ Configuration management for JellyDemon.
 
 import yaml
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
 
 
@@ -17,6 +17,7 @@ class RouterConfig:
     ssh_port: int = 22
     luci_port: int = 80
     use_ssh: bool = False
+    jellyfin_ip: Optional[str] = None
 
 
 @dataclass

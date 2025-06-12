@@ -114,51 +114,52 @@ class OpenWRTClient:
             self.logger.error(f"LuCI authentication error: {e}")
             return False
     
-    def get_bandwidth_usage(self) -> float:
+    def get_bandwidth_usage(self, ip: Optional[str] = None) -> float:
         """
-        Get current upload bandwidth usage in Mbps.
-        
+        Get upload bandwidth usage in Mbps. If ``ip`` is provided, return
+        usage specific to that IP address using either SSH or LuCI.
+
+        Args:
+            ip: Optional IP address to query
+
         Returns:
             Current upload bandwidth usage in Mbps
         """
         try:
             if self.config.use_ssh:
-                return self._get_bandwidth_usage_ssh()
+                return self._get_bandwidth_usage_ssh(ip)
             else:
-                return self._get_bandwidth_usage_luci()
+                return self._get_bandwidth_usage_luci(ip)
         except Exception as e:
             self.logger.error(f"Failed to get bandwidth usage: {e}")
             return 0.0
-    
-    def _get_bandwidth_usage_ssh(self) -> float:
+
+    def _get_bandwidth_usage_ssh(self, ip: Optional[str] = None) -> float:
         """Get bandwidth usage via SSH."""
         if self.ssh_client is None:
             self._connect_ssh()
-        
-        # Read network interface statistics
-        # This reads from /proc/net/dev for upload bytes on the WAN interface
-        # You may need to adjust the interface name (e.g., eth0, wan, pppoe-wan)
-        cmd = """
-        # Find WAN interface
-        WAN_IF=$(uci get network.wan.device 2>/dev/null || echo "eth0")
-        
-        # Get current TX bytes
-        TX_BYTES=$(cat /sys/class/net/$WAN_IF/statistics/tx_bytes 2>/dev/null || echo "0")
-        
-        # Sleep for 1 second and read again
-        sleep 1
-        TX_BYTES2=$(cat /sys/class/net/$WAN_IF/statistics/tx_bytes 2>/dev/null || echo "0")
-        
-        # Calculate bytes per second
-        BPS=$((TX_BYTES2 - TX_BYTES))
-        
-        # Convert to Mbps (bytes/sec * 8 / 1,000,000)
-        echo "scale=2; $BPS * 8 / 1000000" | bc -l
-        """
-        
+
+        if ip:
+            cmd = f"""
+            BYTES1=$(iptables -nvx -L FORWARD | awk '$8 == "{ip}" {{sum+=$2}} END {{print sum}}')
+            sleep 1
+            BYTES2=$(iptables -nvx -L FORWARD | awk '$8 == "{ip}" {{sum+=$2}} END {{print sum}}')
+            BPS=$((BYTES2 - BYTES1))
+            echo "scale=2; $BPS * 8 / 1000000" | bc -l
+            """
+        else:
+            cmd = """
+            WAN_IF=$(uci get network.wan.device 2>/dev/null || echo "eth0")
+            TX_BYTES=$(cat /sys/class/net/$WAN_IF/statistics/tx_bytes 2>/dev/null || echo "0")
+            sleep 1
+            TX_BYTES2=$(cat /sys/class/net/$WAN_IF/statistics/tx_bytes 2>/dev/null || echo "0")
+            BPS=$((TX_BYTES2 - TX_BYTES))
+            echo "scale=2; $BPS * 8 / 1000000" | bc -l
+            """
+
         stdin, stdout, stderr = self.ssh_client.exec_command(cmd)
         result = stdout.read().decode().strip()
-        
+
         try:
             mbps = float(result)
             self.logger.debug(f"Current upload usage: {mbps:.2f} Mbps")
@@ -166,18 +167,21 @@ class OpenWRTClient:
         except ValueError:
             self.logger.error(f"Invalid bandwidth reading: {result}")
             return 0.0
-    
-    def _get_bandwidth_usage_luci(self) -> float:
+
+    def _get_bandwidth_usage_luci(self, ip: Optional[str] = None) -> float:
         """Get bandwidth usage via LuCI API."""
         if not self._authenticate_luci():
             return 0.0
-        
+
         try:
             # LuCI RPC call for network statistics
             # This endpoint may vary depending on LuCI version
-            stats_url = f"{self.luci_base}/cgi-bin/luci/admin/status/realtime/bandwidth"
+            if ip:
+                stats_url = f"{self.luci_base}/cgi-bin/luci/admin/status/realtime/bandwidth?ip={ip}"
+            else:
+                stats_url = f"{self.luci_base}/cgi-bin/luci/admin/status/realtime/bandwidth"
             response = self.session.get(stats_url)
-            
+
             if response.status_code == 200:
                 data = response.json()
                 # Extract upload bandwidth from response

@@ -112,7 +112,8 @@ python jellydemon.py --dry-run
 4. **Configure your settings (config.yml):**
    - **Router settings**: OpenWRT router at 192.168.1.1 (username: root)
    - **Jellyfin settings**: Server at 192.168.1.243 (API key from .env)
-   - **Network ranges**: Configure your internal IP ranges  
+   - **jellyfin_ip**: IP of your Jellyfin server for traffic exclusion
+   - **Network ranges**: Configure your internal IP ranges
    - **Bandwidth settings**: Adjust limits and algorithm preferences
 
 5. **Get Jellyfin API Key:**
@@ -150,6 +151,7 @@ Key configuration options:
 
 - **Router settings**: 192.168.1.1 (username: root, password from .env)
 - **Jellyfin settings**: 192.168.1.243 (API key from .env)
+- **jellyfin_ip**: IP of your Jellyfin server for traffic exclusion
 - **Network ranges**: Define internal/external IP ranges
 - **Bandwidth algorithms**: Select calculation method
 - **Daemon settings**: Update intervals, logging level
