@@ -154,10 +154,20 @@ class JellyDemon:
             # Apply limits to Jellyfin users
             for user_id, limit in user_limits.items():
                 if self.config.daemon.dry_run:
-                    self.logger.info(f"[DRY RUN] Would set user {user_id} limit to {limit:.2f} Mbps")
-                else:
-                    self.jellyfin.set_user_bandwidth_limit(user_id, limit)
-                    self.logger.info(f"Set user {user_id} bandwidth limit to {limit:.2f} Mbps")
+                    self.logger.info(
+                        f"[DRY RUN] Would set user {user_id} limit to {limit:.2f} Mbps"
+                    )
+                    continue
+
+                changed = self.jellyfin.set_user_bandwidth_limit(user_id, limit)
+                self.logger.info(
+                    f"Set user {user_id} bandwidth limit to {limit:.2f} Mbps"
+                )
+
+                if changed:
+                    session = external_streamers.get(user_id, {}).get('session_data')
+                    if session and session.get('NowPlayingItem'):
+                        self.jellyfin.restart_stream(session)
                     
         except Exception as e:
             self.logger.error(f"Failed to calculate/apply limits: {e}")
