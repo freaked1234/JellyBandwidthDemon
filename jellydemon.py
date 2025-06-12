@@ -7,6 +7,7 @@ Main daemon script that coordinates bandwidth monitoring and management.
 
 import sys
 import time
+from collections import deque
 import signal
 import logging
 import argparse
@@ -36,6 +37,7 @@ class JellyDemon:
         self.jellyfin = JellyfinClient(self.config.jellyfin)
         self.bandwidth_manager = BandwidthManager(self.config.bandwidth)
         self.network_utils = NetworkUtils(self.config.network)
+        self.bandwidth_history = deque()
         
         # Setup signal handlers
         signal.signal(signal.SIGTERM, self._signal_handler)
@@ -66,11 +68,23 @@ class JellyDemon:
         return True
     
     def get_current_bandwidth_usage(self) -> float:
-        """Get current upload bandwidth usage from router."""
+        """Get averaged upload bandwidth usage from router."""
         try:
             usage = self.openwrt.get_bandwidth_usage()
-            self.logger.debug(f"Current upload usage: {usage:.2f} Mbps")
-            return usage
+
+            now = time.time()
+            self.bandwidth_history.append((now, usage))
+
+            # Remove samples older than spike_duration window
+            window = self.config.bandwidth.spike_duration * 60
+            while self.bandwidth_history and now - self.bandwidth_history[0][0] > window:
+                self.bandwidth_history.popleft()
+
+            avg_usage = sum(u for _, u in self.bandwidth_history) / len(self.bandwidth_history)
+            self.logger.debug(
+                f"Current upload usage: {avg_usage:.2f} Mbps (raw {usage:.2f} Mbps)"
+            )
+            return avg_usage
         except Exception as e:
             self.logger.error(f"Failed to get bandwidth usage: {e}")
             return 0.0

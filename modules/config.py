@@ -50,6 +50,7 @@ class BandwidthConfig:
     max_per_user: float = 50.0
     reserved_bandwidth: float = 10.0
     total_upload_mbps: float = 0
+    spike_duration: int = 3  # minutes to average usage over
 
 
 @dataclass
@@ -109,6 +110,8 @@ class Config:
         # Validate bandwidth config
         if self.bandwidth.min_per_user >= self.bandwidth.max_per_user:
             raise ValueError("min_per_user must be less than max_per_user")
+        if self.bandwidth.spike_duration <= 0:
+            raise ValueError("spike_duration must be greater than zero")
     
     def reload(self):
         """Reload configuration from file."""

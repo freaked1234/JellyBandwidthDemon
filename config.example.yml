@@ -26,6 +26,8 @@ bandwidth:
   max_per_user: 50.0
   reserved_bandwidth: 10.0
   total_upload_mbps: 100.0
+  # Duration (in minutes) used to average bandwidth usage
+  spike_duration: 3
 
 daemon:
   update_interval: 30
