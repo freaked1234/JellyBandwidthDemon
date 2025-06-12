@@ -7,6 +7,7 @@ class BandwidthSmoothingTest(unittest.TestCase):
     def test_rolling_average(self):
         daemon = JellyDemon('config.example.yml')
         daemon.config.bandwidth.spike_duration = 3
+        daemon.config.router.jellyfin_ip = None
 
         values = [10, 100, 10, 10]
         times = [0, 10, 20, 200]
