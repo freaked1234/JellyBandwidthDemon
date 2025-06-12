@@ -1,0 +1,67 @@
+# JellyDemon Configuration File
+# Copy this to config.yml and modify according to your setup
+
+# Router Configuration (OpenWRT)
+router:
+  host: "192.168.1.1"  # Your router's IP address
+  username: "root"     # Router admin username
+  password: "your_password"  # Router admin password
+  ssh_port: 22         # SSH port (if using SSH method)
+  luci_port: 80        # LuCI web interface port
+  use_ssh: false       # Use SSH instead of LuCI API (more reliable)
+  
+# Jellyfin Configuration
+jellyfin:
+  host: "192.168.1.100"  # Your Jellyfin server IP
+  port: 8096             # Jellyfin port
+  api_key: "your_api_key_here"  # Jellyfin API key
+  use_https: false       # Use HTTPS for Jellyfin API
+  
+# Network Configuration
+network:
+  # Define internal IP ranges - users outside these ranges are considered external
+  internal_ranges:
+    - "192.168.0.0/16"   # Standard private network
+    - "10.0.0.0/8"       # Another private network range
+    - "172.16.0.0/12"    # Third private network range
+  
+  # For testing - set to true to treat local IPs as external
+  test_mode: false
+  test_external_ranges:
+    - "192.168.1.0/24"   # Your LAN range for testing
+    
+# Bandwidth Management
+bandwidth:
+  # Algorithm to use for bandwidth calculation
+  # Options: "equal_split", "priority_based", "demand_based"
+  algorithm: "equal_split"
+  
+  # Minimum bandwidth per user (in Mbps)
+  min_per_user: 2.0
+  
+  # Maximum bandwidth per user (in Mbps) 
+  max_per_user: 50.0
+  
+  # Reserve bandwidth for non-Jellyfin traffic (in Mbps)
+  reserved_bandwidth: 10.0
+  
+  # Total upload bandwidth (auto-detected if 0)
+  total_upload_mbps: 0
+  
+# Daemon Settings
+daemon:
+  # How often to check and update bandwidth (seconds)
+  update_interval: 30
+  
+  # Logging configuration
+  log_level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  log_file: "jellydemon.log"
+  log_max_size: "10MB"
+  log_backup_count: 5
+  
+  # Safety settings
+  dry_run: false     # Set to true to test without making changes
+  backup_user_settings: true  # Backup original user limits
+  
+  # PID file location
+  pid_file: "/tmp/jellydemon.pid" 
