@@ -78,7 +78,8 @@ nano .env
 # 3. Install Python dependencies
 pip install -r requirements.txt
 
-# 4. Edit configuration with your specific settings
+# 4. Copy example configuration
+cp config.example.yml config.yml
 nano config.yml
 
 # 5. Test connectivity
