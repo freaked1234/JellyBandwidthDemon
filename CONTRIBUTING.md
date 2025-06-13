@@ -31,6 +31,9 @@ Feature suggestions are welcome! Please provide:
    cd jellydemon
    cp .env.example .env
    # Fill in your actual credentials in .env
+   # config.yml uses placeholders like ${ROOTER_PASS} and ${JELLY_API}.
+   # Replace them manually or enable environment-variable substitution
+   # so they are read from your .env file.
    pip install -r requirements.txt
    ```
 
