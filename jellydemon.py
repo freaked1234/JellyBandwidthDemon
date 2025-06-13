@@ -39,6 +39,8 @@ class JellyDemon:
         self.bandwidth_manager = BandwidthManager(self.config.bandwidth)
         self.network_utils = NetworkUtils(self.config.network)
         self.bandwidth_history = deque()
+        self.current_external_users = set()
+        self._usage_above_threshold = None
         
         # Setup signal handlers
         signal.signal(signal.SIGTERM, self._signal_handler)
@@ -167,21 +169,22 @@ class JellyDemon:
             
             # Apply limits to Jellyfin users
             for user_id, limit in user_limits.items():
+                session = external_streamers.get(user_id, {}).get('session_data')
                 if self.config.daemon.dry_run:
-                    self.logger.info(
-                        f"[DRY RUN] Would set user {user_id} limit to {limit:.2f} Mbps"
+                    policy = self.jellyfin.get_user_policy(user_id) or {}
+                    old_bps = policy.get('RemoteClientBitrateLimit', 0) or 0
+                    old_limit = old_bps / 1_000_000
+                    state = "playing" if session and session.get('NowPlayingItem') else "idle"
+                    msg = (
+                        f"[DRY RUN] Would change user {user_id} from {old_limit:.2f} Mbps "
+                        f"to {limit:.2f} Mbps ({state})"
                     )
+                    if session and session.get('NowPlayingItem'):
+                        msg += f" - would restart stream (session {session.get('Id')})"
+                    self.logger.info(msg)
                     continue
 
-                changed = self.jellyfin.set_user_bandwidth_limit(user_id, limit)
-                self.logger.info(
-                    f"Set user {user_id} bandwidth limit to {limit:.2f} Mbps"
-                )
-
-                if changed:
-                    session = external_streamers.get(user_id, {}).get('session_data')
-                    if session and session.get('NowPlayingItem'):
-                        self.jellyfin.restart_stream(session)
+                self.jellyfin.set_user_bandwidth_limit(user_id, limit, session)
                     
         except Exception as e:
             self.logger.error(f"Failed to calculate/apply limits: {e}")
@@ -189,16 +192,36 @@ class JellyDemon:
     def run_single_cycle(self):
         """Run a single monitoring/adjustment cycle."""
         self.logger.debug("Starting monitoring cycle")
-        
+
         # Get current bandwidth usage
         current_usage = self.get_current_bandwidth_usage()
-        
+
+        above = current_usage > self.config.bandwidth.low_usage_threshold
+        if self._usage_above_threshold is not None:
+            if above and not self._usage_above_threshold:
+                self.logger.info(
+                    "Network usage exceeded threshold - entering high-demand mode"
+                )
+            elif not above and self._usage_above_threshold:
+                self.logger.info(
+                    "Network usage dropped below threshold - leaving high-demand mode"
+                )
+        self._usage_above_threshold = above
+
         # Get external streamers
         external_streamers = self.get_external_streamers()
-        
+
+        new_users = set(external_streamers.keys())
+        for user_id in new_users - self.current_external_users:
+            ip = external_streamers[user_id].get('ip', 'unknown')
+            self.logger.info(f"User {user_id} started streaming from {ip}")
+        for user_id in self.current_external_users - new_users:
+            self.logger.info(f"User {user_id} stopped streaming")
+        self.current_external_users = new_users
+
         # Calculate and apply bandwidth limits
         self.calculate_and_apply_limits(external_streamers, current_usage)
-        
+
         self.logger.debug("Monitoring cycle completed")
     
     def run(self):
@@ -245,7 +268,7 @@ class JellyDemon:
             if self.config.daemon.backup_user_settings:
                 try:
                     if self.config.daemon.dry_run:
-                        self.logger.info("[DRY RUN] Would restore user bandwidth limits")
+                        self.logger.info("[DRY RUN] Would restore user bandwidth limits to original values")
                     else:
                         restored = self.jellyfin.restore_user_bandwidth_limits()
                         if restored:

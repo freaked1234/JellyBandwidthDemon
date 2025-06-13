@@ -16,13 +16,13 @@ class TestJellyDemonLimits(unittest.TestCase):
 
         daemon.bandwidth_manager.calculate_limits = MagicMock(return_value={'u1': 5.0})
         daemon.jellyfin.set_user_bandwidth_limit = MagicMock(return_value=True)
-        daemon.jellyfin.restart_stream = MagicMock(return_value=True)
+        daemon.jellyfin.restart_stream = MagicMock()
         daemon.openwrt.get_total_bandwidth = MagicMock(return_value=100.0)
 
         daemon.calculate_and_apply_limits(external, current_usage=20.0)
 
-        daemon.jellyfin.set_user_bandwidth_limit.assert_called_with('u1', 5.0)
-        daemon.jellyfin.restart_stream.assert_called_with(session)
+        daemon.jellyfin.set_user_bandwidth_limit.assert_called_with('u1', 5.0, session)
+        daemon.jellyfin.restart_stream.assert_not_called()
 
 if __name__ == '__main__':
     unittest.main()

@@ -47,7 +47,7 @@ JellyDemon monitors your network and Jellyfin server to dynamically allocate ban
 - **Spike Filtering**: Smooths brief bandwidth spikes using a rolling average
 - **Smart Session Management**: Automatically restarts active sessions when limits change
 - **Configurable Algorithms**: Pluggable bandwidth calculation formulas
-- **Comprehensive Logging**: Detailed logs for monitoring and debugging
+- **Comprehensive Logging**: Detailed logs for monitoring and debugging, including policy reads, limit updates with user state, and dry-run actions
 - **Safe Operation**: Validates changes before applying to prevent service disruption and restores user limits on exit
 - **Testing Tools**: Includes bandwidth control testing script for validation
 
@@ -188,6 +188,7 @@ Key configuration options:
 - **low_usage_threshold**: When non-Jellyfin traffic is below this value,
   remote users share bandwidth equally up to `max_per_user`
 - **Daemon settings**: Update intervals, logging level
+- **dry_run**: If set to `true`, no changes are applied and actions are only logged
 
 ### API Documentation
 Full Jellyfin OpenAPI specification is available in `jellyfin-openapi-stable.json` for reference when extending functionality.
@@ -366,6 +367,13 @@ grep "jellydemon.openwrt" jellydemon.log     # Router communication
 grep "jellydemon.jellyfin" jellydemon.log    # Jellyfin API calls  
 grep "jellydemon.bandwidth" jellydemon.log   # Algorithm calculations
 ```
+
+Recent updates add more granular messages:
+- `DEBUG` logs include each user's policy bitrate when fetched.
+- `INFO` logs show old and new limits with the user's current state and
+  indicate if a stream restart occurred.
+- In `--dry-run` mode these messages describe the intended actions without
+  applying them.
 
 ## Development Status
 

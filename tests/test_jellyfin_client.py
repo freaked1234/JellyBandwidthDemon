@@ -38,5 +38,39 @@ class TestJellyfinClient(unittest.TestCase):
         }
         self.assertEqual(params, expected)
 
+    def test_get_user_policy_logs_limit(self):
+        cfg = JellyfinConfig(host='localhost', port=8096, api_key='key')
+        client = JellyfinClient(cfg)
+        response = MagicMock(status_code=200)
+        response.json.return_value = {'RemoteClientBitrateLimit': 5000000}
+        with patch.object(client.session, 'get', return_value=response):
+            with self.assertLogs('jellydemon.jellyfin', level='DEBUG') as cm:
+                policy = client.get_user_policy('u1')
+        self.assertEqual(policy, {'RemoteClientBitrateLimit': 5000000})
+        logs = '\n'.join(cm.output)
+        self.assertIn('RemoteClientBitrateLimit is 5.00 Mbps', logs)
+
+    def test_set_user_bandwidth_limit_logs_and_restarts(self):
+        cfg = JellyfinConfig(host='localhost', port=8096, api_key='key')
+        client = JellyfinClient(cfg)
+        client.get_user_info = MagicMock(return_value={'Name': 'user1'})
+        client.get_user_policy = MagicMock(return_value={'RemoteClientBitrateLimit': 10000000})
+        post_resp = MagicMock(status_code=204)
+        with patch.object(client.session, 'post', return_value=post_resp):
+            client.restart_stream = MagicMock(return_value=True)
+            session = {
+                'Id': 's1',
+                'UserId': 'user1',
+                'NowPlayingItem': {'Id': 'i1', 'MediaSources': [{'Id': 'ms1'}]},
+                'PlayState': {'MediaSourceId': 'ms1'}
+            }
+            with self.assertLogs('jellydemon.jellyfin', level='INFO') as cm:
+                result = client.set_user_bandwidth_limit('user1', 5.0, session)
+        self.assertTrue(result)
+        client.restart_stream.assert_called_with(session)
+        logs = '\n'.join(cm.output)
+        self.assertIn('from 10.00 Mbps to 5.00 Mbps (playing)', logs)
+        self.assertIn('restarted stream (session s1)', logs)
+
 if __name__ == '__main__':
     unittest.main()
