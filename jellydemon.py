@@ -169,30 +169,22 @@ class JellyDemon:
             
             # Apply limits to Jellyfin users
             for user_id, limit in user_limits.items():
+                session = external_streamers.get(user_id, {}).get('session_data')
                 if self.config.daemon.dry_run:
                     policy = self.jellyfin.get_user_policy(user_id) or {}
                     old_bps = policy.get('RemoteClientBitrateLimit', 0) or 0
                     old_limit = old_bps / 1_000_000
-                    self.logger.info(
-                        f"[DRY RUN] Would change user {user_id} from {old_limit:.2f} Mbps to {limit:.2f} Mbps"
+                    state = "playing" if session and session.get('NowPlayingItem') else "idle"
+                    msg = (
+                        f"[DRY RUN] Would change user {user_id} from {old_limit:.2f} Mbps "
+                        f"to {limit:.2f} Mbps ({state})"
                     )
-                    if abs(old_limit - limit) > 0 and user_id in external_streamers:
-                        session = external_streamers[user_id].get('session_data')
-                        if session and session.get('NowPlayingItem'):
-                            self.logger.info(
-                                f"[DRY RUN] Would restart stream for user {user_id} (session {session.get('Id')})"
-                            )
+                    if session and session.get('NowPlayingItem'):
+                        msg += f" - would restart stream (session {session.get('Id')})"
+                    self.logger.info(msg)
                     continue
 
-                changed = self.jellyfin.set_user_bandwidth_limit(user_id, limit)
-                self.logger.info(
-                    f"Set user {user_id} bandwidth limit to {limit:.2f} Mbps"
-                )
-
-                if changed:
-                    session = external_streamers.get(user_id, {}).get('session_data')
-                    if session and session.get('NowPlayingItem'):
-                        self.jellyfin.restart_stream(session)
+                self.jellyfin.set_user_bandwidth_limit(user_id, limit, session)
                     
         except Exception as e:
             self.logger.error(f"Failed to calculate/apply limits: {e}")
