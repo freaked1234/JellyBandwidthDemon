@@ -6,6 +6,7 @@ import yaml
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
+import os
 
 
 @dataclass
@@ -82,7 +83,12 @@ class Config:
             raise FileNotFoundError(f"Configuration file not found: {self.config_path}")
         
         with open(self.config_path, 'r') as f:
-            config_data = yaml.safe_load(f)
+            raw_content = f.read()
+
+        # Expand any ${VAR} placeholders using environment variables
+        expanded_content = os.path.expandvars(raw_content)
+
+        config_data = yaml.safe_load(expanded_content)
         
         # Parse configuration sections
         self.router = RouterConfig(**config_data.get('router', {}))
