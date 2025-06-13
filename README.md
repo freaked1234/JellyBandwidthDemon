@@ -83,6 +83,9 @@ pip install -r requirements.txt
 # 4. Copy example configuration
 cp config.example.yml config.yml
 nano config.yml
+# If you want to keep the ${VAR} placeholders, enable environment
+# variable substitution when running JellyDemon. Otherwise replace
+# them with real values before continuing.
 
 # 5. Test connectivity
 python jellydemon.py --test
@@ -102,6 +105,9 @@ python jellydemon.py --dry-run
    ```bash
    cp config.example.yml config.yml
    nano config.yml
+   # Leave the placeholders intact if you will enable
+   # environment-variable substitution; otherwise put the
+   # actual credentials directly into the file.
    ```
 
 3. **Configure environment variables (.env):**
@@ -152,6 +158,8 @@ services while letting the tests execute.
 ## Configuration
 
 ### Environment Variables (.env)
+Copy `.env.example` to `.env` and populate the variables with your
+actual credentials:
 ```bash
 # Jellyfin API key (get from Jellyfin Admin → API Keys)
 JELLY_API=your_jellyfin_api_key_here
@@ -160,11 +168,15 @@ JELLY_API=your_jellyfin_api_key_here
 ROOTER_PASS=your_router_root_password
 ```
 
-Values like `${ROOTER_PASS}` and `${JELLY_API}` in `config.example.yml` are
-placeholders. They will not be expanded automatically. Use `envsubst` or edit
-`config.yml` manually to replace them with your real credentials.
+`config.example.yml` references these variables using the `${VAR}` syntax.
+At runtime JellyDemon can replace those placeholders with the values from
+your environment if environment-variable substitution is enabled. Otherwise
+edit `config.yml` (or run `envsubst`) to insert the real credentials yourself.
 
 ### Configuration File (config.yml)
+Credentials for the router and Jellyfin server are taken from this file.
+Placeholders like `${ROOTER_PASS}` or `${JELLY_API}` will be filled from
+your environment if substitution is turned on.
 Key configuration options:
 
 - **Router settings**: 192.168.1.1 (username: root, password from .env)
