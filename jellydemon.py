@@ -222,11 +222,22 @@ class JellyDemon:
         except Exception as e:
             self.logger.error(f"Unexpected error in main loop: {e}")
             return 1
-        
+
         finally:
             self.logger.info("JellyDemon shutting down")
-            # TODO: Restore original user settings if backup was enabled
-        
+            if self.config.daemon.backup_user_settings:
+                try:
+                    if self.config.daemon.dry_run:
+                        self.logger.info("[DRY RUN] Would restore user bandwidth limits")
+                    else:
+                        restored = self.jellyfin.restore_user_bandwidth_limits()
+                        if restored:
+                            self.logger.info("User bandwidth limits restored")
+                        else:
+                            self.logger.warning("Failed to restore some user limits")
+                except Exception as e:
+                    self.logger.error(f"Failed to restore user limits: {e}")
+
         return 0
 
 
