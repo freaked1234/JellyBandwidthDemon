@@ -54,6 +54,7 @@ JellyDemon monitors your network and Jellyfin server to dynamically allocate ban
 ## Requirements
 
 - OpenWRT router with LuCI/SSH access (192.168.1.1)
+  - `luci-mod-status` package required for realtime bandwidth APIs
 - Jellyfin server with API access (192.168.1.243)
 - Python 3.8+ environment (Debian LXC container at 192.168.1.208)
 - Network access to both router and Jellyfin server

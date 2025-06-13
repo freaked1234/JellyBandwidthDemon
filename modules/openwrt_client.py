@@ -113,6 +113,36 @@ class OpenWRTClient:
         except Exception as e:
             self.logger.error(f"LuCI authentication error: {e}")
             return False
+
+    def _ubus_call(self, object: str, method: str, params: Optional[Dict[str, Any]] = None) -> Any:
+        """Helper to invoke ubus methods via LuCI RPC."""
+        if params is None:
+            params = {}
+
+        url = f"{self.luci_base}/cgi-bin/luci/admin/ubus"
+        payload = {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "call",
+            "params": [object, method, params]
+        }
+
+        response = self.session.post(url, json=payload)
+        if response.status_code != 200:
+            raise RuntimeError(f"ubus call failed: {response.status_code}")
+
+        result = response.json().get("result")
+        if isinstance(result, list) and len(result) > 1:
+            return result[1]
+        return result
+
+    def _get_wan_interface(self) -> str:
+        """Retrieve the WAN network device name."""
+        try:
+            info = self._ubus_call("network.interface.wan", "status")
+            return info.get("l3_device") or info.get("device") or "wan"
+        except Exception:
+            return "wan"
     
     def get_bandwidth_usage(self, ip: Optional[str] = None) -> float:
         """
@@ -174,24 +204,34 @@ class OpenWRTClient:
             return 0.0
 
         try:
-            # LuCI RPC call for network statistics
-            # This endpoint may vary depending on LuCI version
+            iface = self._get_wan_interface()
+            params = {"iface": iface, "limit": 2}
             if ip:
-                stats_url = f"{self.luci_base}/cgi-bin/luci/admin/status/realtime/bandwidth?ip={ip}"
-            else:
-                stats_url = f"{self.luci_base}/cgi-bin/luci/admin/status/realtime/bandwidth"
-            response = self.session.get(stats_url)
+                params["ip"] = ip
 
-            if response.status_code == 200:
-                data = response.json()
-                # Extract upload bandwidth from response
-                # This will need to be adjusted based on actual LuCI response format
-                upload_mbps = data.get('upload_mbps', 0.0)
-                return upload_mbps
-            else:
+            url = f"{self.luci_base}/cgi-bin/luci/admin/status/realtime/bandwidth"
+            response = self.session.get(url, params=params)
+            if response.status_code != 200:
                 self.logger.error(f"LuCI bandwidth query failed: {response.status_code}")
                 return 0.0
-                
+
+            data = response.json()
+            records = data.get("data") if isinstance(data, dict) else data
+            if not isinstance(records, list) or len(records) < 2:
+                return 0.0
+
+            t1, t2 = records[-2], records[-1]
+            if len(t1) < 5 or len(t2) < 5:
+                return 0.0
+
+            tx_bytes = t2[3] - t1[3]
+            time_diff = t2[0] - t1[0]
+            if time_diff <= 0:
+                return 0.0
+
+            mbps = (tx_bytes * 8) / time_diff / 1_000_000
+            return mbps
+
         except Exception as e:
             self.logger.error(f"LuCI bandwidth query error: {e}")
             return 0.0
@@ -243,8 +283,18 @@ class OpenWRTClient:
     
     def _get_total_bandwidth_luci(self) -> float:
         """Get total bandwidth capacity via LuCI API."""
-        # This would need implementation based on LuCI API
-        # For now, return a default value
+        if not self._authenticate_luci():
+            return 100.0
+
+        try:
+            iface = self._get_wan_interface()
+            result = self._ubus_call("network.device", "status", {"name": iface})
+            speed = result.get("speed") if isinstance(result, dict) else None
+            if speed:
+                return float(speed)
+        except Exception as e:
+            self.logger.error(f"LuCI total bandwidth query error: {e}")
+
         return 100.0
     
     def get_sqm_settings(self) -> Dict[str, Any]:
@@ -316,4 +366,4 @@ class OpenWRTClient:
     def __del__(self):
         """Clean up connections."""
         if self.ssh_client:
-            self.ssh_client.close() 
+            self.ssh_client.close()
