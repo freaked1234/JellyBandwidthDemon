@@ -43,10 +43,12 @@ JellyDemon monitors your network and Jellyfin server to dynamically allocate ban
 - **Real-time Monitoring**: Continuously monitors network and streaming activity
 - **External User Detection**: Identifies users streaming from outside configured IP ranges
 - **Dynamic Bandwidth Management**: Automatically adjusts user limits based on available bandwidth
-- **Smart Session Management**: Handles Jellyfin's bandwidth change behavior with automatic session restart
+- **Traffic Accounting**: Subtracts Jellyfin upload usage from router totals
+- **Spike Filtering**: Smooths brief bandwidth spikes using a rolling average
+- **Smart Session Management**: Automatically restarts active sessions when limits change
 - **Configurable Algorithms**: Pluggable bandwidth calculation formulas
 - **Comprehensive Logging**: Detailed logs for monitoring and debugging
-- **Safe Operation**: Validates changes before applying to prevent service disruption
+- **Safe Operation**: Validates changes before applying to prevent service disruption and restores user limits on exit
 - **Testing Tools**: Includes bandwidth control testing script for validation
 
 ## Requirements
@@ -135,6 +137,18 @@ python test_jellydemon.py --test jellyfin
 python jellydemon.py --test
 ```
 
+You can also run the unit tests with `pytest`:
+
+```bash
+cp .env.example .env
+export JELLY_API=dummy
+export ROOTER_PASS=dummy
+pytest -q
+```
+
+Providing dummy environment variables prevents accidental calls to real
+services while letting the tests execute.
+
 ## Configuration
 
 ### Environment Variables (.env)
@@ -145,6 +159,10 @@ JELLY_API=your_jellyfin_api_key_here
 # OpenWRT router root password
 ROOTER_PASS=your_router_root_password
 ```
+
+Values like `${ROOTER_PASS}` and `${JELLY_API}` in `config.example.yml` are
+placeholders. They will not be expanded automatically. Use `envsubst` or edit
+`config.yml` manually to replace them with your real credentials.
 
 ### Configuration File (config.yml)
 Key configuration options:
