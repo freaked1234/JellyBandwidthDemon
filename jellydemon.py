@@ -39,6 +39,8 @@ class JellyDemon:
         self.bandwidth_manager = BandwidthManager(self.config.bandwidth)
         self.network_utils = NetworkUtils(self.config.network)
         self.bandwidth_history = deque()
+        self.current_external_users = set()
+        self._usage_above_threshold = None
         
         # Setup signal handlers
         signal.signal(signal.SIGTERM, self._signal_handler)
@@ -198,16 +200,36 @@ class JellyDemon:
     def run_single_cycle(self):
         """Run a single monitoring/adjustment cycle."""
         self.logger.debug("Starting monitoring cycle")
-        
+
         # Get current bandwidth usage
         current_usage = self.get_current_bandwidth_usage()
-        
+
+        above = current_usage > self.config.bandwidth.low_usage_threshold
+        if self._usage_above_threshold is not None:
+            if above and not self._usage_above_threshold:
+                self.logger.info(
+                    "Network usage exceeded threshold - entering high-demand mode"
+                )
+            elif not above and self._usage_above_threshold:
+                self.logger.info(
+                    "Network usage dropped below threshold - leaving high-demand mode"
+                )
+        self._usage_above_threshold = above
+
         # Get external streamers
         external_streamers = self.get_external_streamers()
-        
+
+        new_users = set(external_streamers.keys())
+        for user_id in new_users - self.current_external_users:
+            ip = external_streamers[user_id].get('ip', 'unknown')
+            self.logger.info(f"User {user_id} started streaming from {ip}")
+        for user_id in self.current_external_users - new_users:
+            self.logger.info(f"User {user_id} stopped streaming")
+        self.current_external_users = new_users
+
         # Calculate and apply bandwidth limits
         self.calculate_and_apply_limits(external_streamers, current_usage)
-        
+
         self.logger.debug("Monitoring cycle completed")
     
     def run(self):
