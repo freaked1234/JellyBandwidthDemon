@@ -5,8 +5,9 @@ Jellyfin client for session monitoring and user bandwidth management.
 import requests
 import json
 import logging
+import time
 from typing import Dict, Any, List, Optional, TYPE_CHECKING
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlencode
 
 if TYPE_CHECKING:
     from .config import JellyfinConfig
@@ -296,8 +297,71 @@ class JellyfinClient:
         except Exception as e:
             self.logger.error(f"Error getting users: {e}")
             return []
-    
+
+    def restart_stream(self, session: Dict[str, Any]) -> bool:
+        """Force a client to restart playback for the given session."""
+        session_id = session.get('Id')
+        user_id = session.get('UserId')
+        now_playing = session.get('NowPlayingItem')
+        play_state = session.get('PlayState', {})
+
+        if not (session_id and user_id and now_playing):
+            self.logger.warning(
+                f"Cannot restart session; missing data for session {session_id}"
+            )
+            return False
+
+        item_id = now_playing.get('Id')
+        position_ticks = play_state.get('PositionTicks', 0)
+        media_source_id = play_state.get('MediaSourceId') or \
+            (now_playing.get('MediaSources') or [{}])[0].get('Id')
+
+        if not (item_id and media_source_id):
+            self.logger.warning(
+                f"Cannot restart session {session_id}; missing media identifiers"
+            )
+            return False
+
+        try:
+            stop_url = urljoin(
+                self.config.base_url,
+                f'/Sessions/{session_id}/Playing/Stop'
+            )
+            self.session.post(stop_url, json={})
+            time.sleep(0.8)
+
+            resume_url = urljoin(
+                self.config.base_url,
+                f'/Sessions/{session_id}/Playing'
+            )
+            params = {
+                'playCommand': 'PlayNow',
+                'itemIds': item_id,
+                'startPositionTicks': position_ticks,
+                'mediaSourceId': media_source_id,
+                'controllingUserId': user_id
+            }
+            response = self.session.post(resume_url, params=params, json={})
+
+            if response.status_code in (200, 204):
+                self.logger.info(
+                    f"Restarted stream for user {user_id} (session {session_id})"
+                )
+                return True
+
+            self.logger.error(
+                f"Failed to restart stream {session_id}: {response.status_code}"
+            )
+            return False
+
+        except Exception as e:
+            self.logger.error(
+                f"Error restarting stream {session_id}: {e}"
+            )
+            return False
+
     def clear_user_cache(self):
         """Clear the user information cache."""
         self._user_cache.clear()
-        self.logger.debug("User cache cleared") 
+        self.logger.debug("User cache cleared")
+

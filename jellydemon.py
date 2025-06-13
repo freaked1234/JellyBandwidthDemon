@@ -7,11 +7,13 @@ Main daemon script that coordinates bandwidth monitoring and management.
 
 import sys
 import time
+from collections import deque
 import signal
 import logging
 import argparse
 from pathlib import Path
 import yaml
+import os
 from typing import Dict, Any
 
 from modules.config import Config
@@ -36,6 +38,7 @@ class JellyDemon:
         self.jellyfin = JellyfinClient(self.config.jellyfin)
         self.bandwidth_manager = BandwidthManager(self.config.bandwidth)
         self.network_utils = NetworkUtils(self.config.network)
+        self.bandwidth_history = deque()
         
         # Setup signal handlers
         signal.signal(signal.SIGTERM, self._signal_handler)
@@ -66,11 +69,30 @@ class JellyDemon:
         return True
     
     def get_current_bandwidth_usage(self) -> float:
-        """Get current upload bandwidth usage from router."""
+        """Get averaged upload bandwidth usage from router."""
         try:
             usage = self.openwrt.get_bandwidth_usage()
-            self.logger.debug(f"Current upload usage: {usage:.2f} Mbps")
-            return usage
+
+            if self.config.router.jellyfin_ip:
+                jf_usage = self.openwrt.get_bandwidth_usage(self.config.router.jellyfin_ip)
+                usage = max(usage - jf_usage, 0)
+                self.logger.debug(
+                    f"Subtracting Jellyfin traffic {jf_usage:.2f} Mbps from total"
+                )
+
+            now = time.time()
+            self.bandwidth_history.append((now, usage))
+
+            # Remove samples older than spike_duration window
+            window = self.config.bandwidth.spike_duration * 60
+            while self.bandwidth_history and now - self.bandwidth_history[0][0] > window:
+                self.bandwidth_history.popleft()
+
+            avg_usage = sum(u for _, u in self.bandwidth_history) / len(self.bandwidth_history)
+            self.logger.debug(
+                f"Current upload usage: {avg_usage:.2f} Mbps (raw {usage:.2f} Mbps)"
+            )
+            return avg_usage
         except Exception as e:
             self.logger.error(f"Failed to get bandwidth usage: {e}")
             return 0.0
@@ -118,25 +140,48 @@ class JellyDemon:
             total_bandwidth = self.config.bandwidth.total_upload_mbps
             if total_bandwidth == 0:
                 total_bandwidth = self.openwrt.get_total_bandwidth()
-            
+
             available_bandwidth = total_bandwidth - current_usage - self.config.bandwidth.reserved_bandwidth
-            
-            self.logger.info(f"Total: {total_bandwidth:.2f} Mbps, "
-                           f"Current usage: {current_usage:.2f} Mbps, "
-                           f"Available: {available_bandwidth:.2f} Mbps")
-            
-            # Calculate per-user limits
-            user_limits = self.bandwidth_manager.calculate_limits(
-                external_streamers, available_bandwidth
+
+            self.logger.info(
+                f"Total: {total_bandwidth:.2f} Mbps, "
+                f"Current usage: {current_usage:.2f} Mbps, "
+                f"Available: {available_bandwidth:.2f} Mbps"
             )
+
+            # Decide on algorithm based on non-Jellyfin usage
+            if current_usage <= self.config.bandwidth.low_usage_threshold:
+                self.logger.debug(
+                    "Low network usage detected - applying equal split limits"
+                )
+                from modules.bandwidth_manager import EqualSplitAlgorithm
+
+                algo = EqualSplitAlgorithm()
+                user_limits = algo.calculate_limits(
+                    external_streamers, available_bandwidth, self.config.bandwidth
+                )
+            else:
+                user_limits = self.bandwidth_manager.calculate_limits(
+                    external_streamers, available_bandwidth
+                )
             
             # Apply limits to Jellyfin users
             for user_id, limit in user_limits.items():
                 if self.config.daemon.dry_run:
-                    self.logger.info(f"[DRY RUN] Would set user {user_id} limit to {limit:.2f} Mbps")
-                else:
-                    self.jellyfin.set_user_bandwidth_limit(user_id, limit)
-                    self.logger.info(f"Set user {user_id} bandwidth limit to {limit:.2f} Mbps")
+                    self.logger.info(
+                        f"[DRY RUN] Would set user {user_id} limit to {limit:.2f} Mbps"
+                    )
+                    continue
+
+                changed = self.jellyfin.set_user_bandwidth_limit(user_id, limit)
+                self.logger.info(
+                    f"Set user {user_id} bandwidth limit to {limit:.2f} Mbps"
+                )
+
+                if changed:
+                    session = external_streamers.get(user_id, {}).get('session_data')
+                    if session and session.get('NowPlayingItem'):
+                        self.jellyfin.restart_stream(session)
                     
         except Exception as e:
             self.logger.error(f"Failed to calculate/apply limits: {e}")
@@ -162,6 +207,16 @@ class JellyDemon:
             self.logger.error("Connectivity validation failed, exiting")
             return 1
         
+        pid_path = Path(self.config.daemon.pid_file)
+        if pid_path.exists():
+            self.logger.error(f"PID file {pid_path} already exists. Is JellyDemon already running?")
+            return 1
+        try:
+            pid_path.write_text(str(os.getpid()))
+        except Exception as e:
+            self.logger.error(f"Failed to write PID file {pid_path}: {e}")
+            return 1
+
         self.logger.info("Starting JellyDemon main loop")
         self.running = True
         
@@ -178,11 +233,28 @@ class JellyDemon:
         except Exception as e:
             self.logger.error(f"Unexpected error in main loop: {e}")
             return 1
-        
+
         finally:
             self.logger.info("JellyDemon shutting down")
-            # TODO: Restore original user settings if backup was enabled
-        
+            if pid_path.exists():
+                try:
+                    pid_path.unlink()
+                except Exception as e:
+                    self.logger.warning(f"Failed to remove PID file {pid_path}: {e}")
+
+            if self.config.daemon.backup_user_settings:
+                try:
+                    if self.config.daemon.dry_run:
+                        self.logger.info("[DRY RUN] Would restore user bandwidth limits")
+                    else:
+                        restored = self.jellyfin.restore_user_bandwidth_limits()
+                        if restored:
+                            self.logger.info("User bandwidth limits restored")
+                        else:
+                            self.logger.warning("Failed to restore some user limits")
+                except Exception as e:
+                    self.logger.error(f"Failed to restore user limits: {e}")
+
         return 0
 
 

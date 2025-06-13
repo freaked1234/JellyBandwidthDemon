@@ -1,3 +1,7 @@
+# THIS IS NOT YET WORKING AND JUST A WIP
+If you want a working version, check back here from time to time
+If you want to contribute, message me
+
 # JellyDemon - Intelligent Jellyfin Bandwidth Management
 
 A Python daemon that automatically manages Jellyfin user bandwidth limits based on real-time network demand and external streaming activity.
@@ -39,15 +43,18 @@ JellyDemon monitors your network and Jellyfin server to dynamically allocate ban
 - **Real-time Monitoring**: Continuously monitors network and streaming activity
 - **External User Detection**: Identifies users streaming from outside configured IP ranges
 - **Dynamic Bandwidth Management**: Automatically adjusts user limits based on available bandwidth
-- **Smart Session Management**: Handles Jellyfin's bandwidth change behavior with automatic session restart
+- **Traffic Accounting**: Subtracts Jellyfin upload usage from router totals
+- **Spike Filtering**: Smooths brief bandwidth spikes using a rolling average
+- **Smart Session Management**: Automatically restarts active sessions when limits change
 - **Configurable Algorithms**: Pluggable bandwidth calculation formulas
 - **Comprehensive Logging**: Detailed logs for monitoring and debugging
-- **Safe Operation**: Validates changes before applying to prevent service disruption
+- **Safe Operation**: Validates changes before applying to prevent service disruption and restores user limits on exit
 - **Testing Tools**: Includes bandwidth control testing script for validation
 
 ## Requirements
 
 - OpenWRT router with LuCI/SSH access (192.168.1.1)
+  - `luci-mod-status` package required for realtime bandwidth APIs
 - Jellyfin server with API access (192.168.1.243)
 - Python 3.8+ environment (Debian LXC container at 192.168.1.208)
 - Network access to both router and Jellyfin server
@@ -74,8 +81,12 @@ nano .env
 # 3. Install Python dependencies
 pip install -r requirements.txt
 
-# 4. Edit configuration with your specific settings
+# 4. Copy example configuration
+cp config.example.yml config.yml
 nano config.yml
+# If you want to keep the ${VAR} placeholders, enable environment
+# variable substitution when running JellyDemon. Otherwise replace
+# them with real values before continuing.
 
 # 5. Test connectivity
 python jellydemon.py --test
@@ -95,6 +106,9 @@ python jellydemon.py --dry-run
    ```bash
    cp config.example.yml config.yml
    nano config.yml
+   # Leave the placeholders intact if you will enable
+   # environment-variable substitution; otherwise put the
+   # actual credentials directly into the file.
    ```
 
 3. **Configure environment variables (.env):**
@@ -107,7 +121,8 @@ python jellydemon.py --dry-run
 4. **Configure your settings (config.yml):**
    - **Router settings**: OpenWRT router at 192.168.1.1 (username: root)
    - **Jellyfin settings**: Server at 192.168.1.243 (API key from .env)
-   - **Network ranges**: Configure your internal IP ranges  
+   - **jellyfin_ip**: IP of your Jellyfin server for traffic exclusion
+   - **Network ranges**: Configure your internal IP ranges
    - **Bandwidth settings**: Adjust limits and algorithm preferences
 
 5. **Get Jellyfin API Key:**
@@ -129,9 +144,23 @@ python test_jellydemon.py --test jellyfin
 python jellydemon.py --test
 ```
 
+You can also run the unit tests with `pytest`:
+
+```bash
+cp .env.example .env
+export JELLY_API=dummy
+export ROOTER_PASS=dummy
+pytest -q
+```
+
+Providing dummy environment variables prevents accidental calls to real
+services while letting the tests execute.
+
 ## Configuration
 
 ### Environment Variables (.env)
+Copy `.env.example` to `.env` and populate the variables with your
+actual credentials:
 ```bash
 # Jellyfin API key (get from Jellyfin Admin → API Keys)
 JELLY_API=your_jellyfin_api_key_here
@@ -140,13 +169,24 @@ JELLY_API=your_jellyfin_api_key_here
 ROOTER_PASS=your_router_root_password
 ```
 
+`config.example.yml` references these variables using the `${VAR}` syntax.
+At runtime JellyDemon can replace those placeholders with the values from
+your environment if environment-variable substitution is enabled. Otherwise
+edit `config.yml` (or run `envsubst`) to insert the real credentials yourself.
+
 ### Configuration File (config.yml)
+Credentials for the router and Jellyfin server are taken from this file.
+Placeholders like `${ROOTER_PASS}` or `${JELLY_API}` will be filled from
+your environment if substitution is turned on.
 Key configuration options:
 
 - **Router settings**: 192.168.1.1 (username: root, password from .env)
 - **Jellyfin settings**: 192.168.1.243 (API key from .env)
+- **jellyfin_ip**: IP of your Jellyfin server for traffic exclusion
 - **Network ranges**: Define internal/external IP ranges
 - **Bandwidth algorithms**: Select calculation method
+- **low_usage_threshold**: When non-Jellyfin traffic is below this value,
+  remote users share bandwidth equally up to `max_per_user`
 - **Daemon settings**: Update intervals, logging level
 
 ### API Documentation

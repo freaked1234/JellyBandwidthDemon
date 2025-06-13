@@ -4,8 +4,9 @@ Configuration management for JellyDemon.
 
 import yaml
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
+import os
 
 
 @dataclass
@@ -17,6 +18,7 @@ class RouterConfig:
     ssh_port: int = 22
     luci_port: int = 80
     use_ssh: bool = False
+    jellyfin_ip: Optional[str] = None
 
 
 @dataclass
@@ -50,6 +52,8 @@ class BandwidthConfig:
     max_per_user: float = 50.0
     reserved_bandwidth: float = 10.0
     total_upload_mbps: float = 0
+    spike_duration: int = 3  # minutes to average usage over
+    low_usage_threshold: float = 0.0  # non-Jellyfin usage threshold for equal-split
 
 
 @dataclass
@@ -79,7 +83,12 @@ class Config:
             raise FileNotFoundError(f"Configuration file not found: {self.config_path}")
         
         with open(self.config_path, 'r') as f:
-            config_data = yaml.safe_load(f)
+            raw_content = f.read()
+
+        # Expand any ${VAR} placeholders using environment variables
+        expanded_content = os.path.expandvars(raw_content)
+
+        config_data = yaml.safe_load(expanded_content)
         
         # Parse configuration sections
         self.router = RouterConfig(**config_data.get('router', {}))
@@ -109,6 +118,10 @@ class Config:
         # Validate bandwidth config
         if self.bandwidth.min_per_user >= self.bandwidth.max_per_user:
             raise ValueError("min_per_user must be less than max_per_user")
+        if self.bandwidth.spike_duration <= 0:
+            raise ValueError("spike_duration must be greater than zero")
+        if self.bandwidth.low_usage_threshold < 0:
+            raise ValueError("low_usage_threshold must be non-negative")
     
     def reload(self):
         """Reload configuration from file."""
