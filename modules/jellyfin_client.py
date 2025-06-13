@@ -126,9 +126,14 @@ class JellyfinClient:
         try:
             url = urljoin(self.config.base_url, f'/Users/{user_id}/Policy')
             response = self.session.get(url)
-            
+
             if response.status_code == 200:
-                return response.json()
+                policy = response.json()
+                bitrate = policy.get('RemoteClientBitrateLimit', 0) or 0
+                self.logger.debug(
+                    f"User {user_id} policy RemoteClientBitrateLimit is {bitrate / 1_000_000:.2f} Mbps"
+                )
+                return policy
             else:
                 self.logger.error(f"Failed to get user policy for {user_id}: {response.status_code}")
                 return None
@@ -137,7 +142,12 @@ class JellyfinClient:
             self.logger.error(f"Error getting user policy for {user_id}: {e}")
             return None
     
-    def set_user_bandwidth_limit(self, user_id: str, limit_mbps: float) -> bool:
+    def set_user_bandwidth_limit(
+        self,
+        user_id: str,
+        limit_mbps: float,
+        session_data: Optional[Dict[str, Any]] = None,
+    ) -> bool:
         """
         Set bandwidth limit for a user.
         
@@ -160,6 +170,9 @@ class JellyfinClient:
                 self._original_user_settings[user_id] = {
                     'RemoteClientBitrateLimit': policy.get('RemoteClientBitrateLimit', 0)
                 }
+
+            old_bps = policy.get('RemoteClientBitrateLimit', 0) or 0
+            old_limit = old_bps / 1_000_000
             
             # Convert Mbps to bits per second (Jellyfin uses bps)
             limit_bps = int(limit_mbps * 1_000_000)
@@ -174,7 +187,17 @@ class JellyfinClient:
             if response.status_code == 204:  # No Content = Success
                 user_info = self.get_user_info(user_id)
                 username = user_info.get('Name', user_id) if user_info else user_id
-                self.logger.info(f"Set bandwidth limit for user {username} to {limit_mbps:.2f} Mbps")
+                state = (
+                    "playing" if session_data and session_data.get('NowPlayingItem') else "idle"
+                )
+                msg = (
+                    f"Set bandwidth limit for user {username} from {old_limit:.2f} Mbps "
+                    f"to {limit_mbps:.2f} Mbps ({state})"
+                )
+                if session_data and session_data.get('NowPlayingItem'):
+                    if self.restart_stream(session_data):
+                        msg += f" - restarted stream (session {session_data.get('Id')})"
+                self.logger.info(msg)
                 return True
             else:
                 self.logger.error(f"Failed to set bandwidth limit for {user_id}: {response.status_code}")

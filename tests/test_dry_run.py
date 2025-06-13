@@ -27,8 +27,7 @@ class TestDryRunMode(unittest.TestCase):
         daemon.jellyfin.set_user_bandwidth_limit.assert_not_called()
         daemon.jellyfin.restart_stream.assert_not_called()
         logs = '\n'.join(cm.output)
-        self.assertIn('[DRY RUN] Would change user u1 from 10.00 Mbps to 5.00 Mbps', logs)
-        self.assertIn('[DRY RUN] Would restart stream for user u1 (session s1)', logs)
+        self.assertIn('[DRY RUN] Would change user u1 from 10.00 Mbps to 5.00 Mbps (playing) - would restart stream (session s1)', logs)
 
     def test_shutdown_logs_restore(self):
         daemon = JellyDemon('config.example.yml')
