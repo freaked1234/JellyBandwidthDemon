@@ -1,5 +1,7 @@
 # Contributing to JellyDemon
 
+*Dont get fooled by the following text, this is just a template! This is my first project I put on github and I am a complete noob!!!1*
+
 First off, thanks for taking the time to contribute! 🎉
 
 ## How Can I Contribute?
