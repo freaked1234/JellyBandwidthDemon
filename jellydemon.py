@@ -13,6 +13,7 @@ import logging
 import argparse
 from pathlib import Path
 import yaml
+import os
 from typing import Dict, Any
 
 from modules.config import Config
@@ -206,6 +207,16 @@ class JellyDemon:
             self.logger.error("Connectivity validation failed, exiting")
             return 1
         
+        pid_path = Path(self.config.daemon.pid_file)
+        if pid_path.exists():
+            self.logger.error(f"PID file {pid_path} already exists. Is JellyDemon already running?")
+            return 1
+        try:
+            pid_path.write_text(str(os.getpid()))
+        except Exception as e:
+            self.logger.error(f"Failed to write PID file {pid_path}: {e}")
+            return 1
+
         self.logger.info("Starting JellyDemon main loop")
         self.running = True
         
@@ -225,6 +236,12 @@ class JellyDemon:
 
         finally:
             self.logger.info("JellyDemon shutting down")
+            if pid_path.exists():
+                try:
+                    pid_path.unlink()
+                except Exception as e:
+                    self.logger.warning(f"Failed to remove PID file {pid_path}: {e}")
+
             if self.config.daemon.backup_user_settings:
                 try:
                     if self.config.daemon.dry_run:
