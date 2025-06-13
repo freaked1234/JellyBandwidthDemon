@@ -139,17 +139,30 @@ class JellyDemon:
             total_bandwidth = self.config.bandwidth.total_upload_mbps
             if total_bandwidth == 0:
                 total_bandwidth = self.openwrt.get_total_bandwidth()
-            
+
             available_bandwidth = total_bandwidth - current_usage - self.config.bandwidth.reserved_bandwidth
-            
-            self.logger.info(f"Total: {total_bandwidth:.2f} Mbps, "
-                           f"Current usage: {current_usage:.2f} Mbps, "
-                           f"Available: {available_bandwidth:.2f} Mbps")
-            
-            # Calculate per-user limits
-            user_limits = self.bandwidth_manager.calculate_limits(
-                external_streamers, available_bandwidth
+
+            self.logger.info(
+                f"Total: {total_bandwidth:.2f} Mbps, "
+                f"Current usage: {current_usage:.2f} Mbps, "
+                f"Available: {available_bandwidth:.2f} Mbps"
             )
+
+            # Decide on algorithm based on non-Jellyfin usage
+            if current_usage <= self.config.bandwidth.low_usage_threshold:
+                self.logger.debug(
+                    "Low network usage detected - applying equal split limits"
+                )
+                from modules.bandwidth_manager import EqualSplitAlgorithm
+
+                algo = EqualSplitAlgorithm()
+                user_limits = algo.calculate_limits(
+                    external_streamers, available_bandwidth, self.config.bandwidth
+                )
+            else:
+                user_limits = self.bandwidth_manager.calculate_limits(
+                    external_streamers, available_bandwidth
+                )
             
             # Apply limits to Jellyfin users
             for user_id, limit in user_limits.items():

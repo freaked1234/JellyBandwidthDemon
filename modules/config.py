@@ -52,6 +52,7 @@ class BandwidthConfig:
     reserved_bandwidth: float = 10.0
     total_upload_mbps: float = 0
     spike_duration: int = 3  # minutes to average usage over
+    low_usage_threshold: float = 0.0  # non-Jellyfin usage threshold for equal-split
 
 
 @dataclass
@@ -113,6 +114,8 @@ class Config:
             raise ValueError("min_per_user must be less than max_per_user")
         if self.bandwidth.spike_duration <= 0:
             raise ValueError("spike_duration must be greater than zero")
+        if self.bandwidth.low_usage_threshold < 0:
+            raise ValueError("low_usage_threshold must be non-negative")
     
     def reload(self):
         """Reload configuration from file."""

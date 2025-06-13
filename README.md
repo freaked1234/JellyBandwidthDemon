@@ -154,6 +154,8 @@ Key configuration options:
 - **jellyfin_ip**: IP of your Jellyfin server for traffic exclusion
 - **Network ranges**: Define internal/external IP ranges
 - **Bandwidth algorithms**: Select calculation method
+- **low_usage_threshold**: When non-Jellyfin traffic is below this value,
+  remote users share bandwidth equally up to `max_per_user`
 - **Daemon settings**: Update intervals, logging level
 
 ### API Documentation

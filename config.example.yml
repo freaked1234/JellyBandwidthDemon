@@ -29,6 +29,9 @@ bandwidth:
   total_upload_mbps: 100.0
   # Duration (in minutes) used to average bandwidth usage
   spike_duration: 3
+  # When non-Jellyfin bandwidth is below this threshold (Mbps),
+  # users share bandwidth equally up to max_per_user
+  low_usage_threshold: 20.0
 
 daemon:
   update_interval: 30
