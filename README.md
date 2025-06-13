@@ -188,6 +188,7 @@ Key configuration options:
 - **low_usage_threshold**: When non-Jellyfin traffic is below this value,
   remote users share bandwidth equally up to `max_per_user`
 - **Daemon settings**: Update intervals, logging level
+- **dry_run**: If set to `true`, no changes are applied and actions are only logged
 
 ### API Documentation
 Full Jellyfin OpenAPI specification is available in `jellyfin-openapi-stable.json` for reference when extending functionality.

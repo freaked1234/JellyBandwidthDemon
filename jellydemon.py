@@ -168,9 +168,18 @@ class JellyDemon:
             # Apply limits to Jellyfin users
             for user_id, limit in user_limits.items():
                 if self.config.daemon.dry_run:
+                    policy = self.jellyfin.get_user_policy(user_id) or {}
+                    old_bps = policy.get('RemoteClientBitrateLimit', 0) or 0
+                    old_limit = old_bps / 1_000_000
                     self.logger.info(
-                        f"[DRY RUN] Would set user {user_id} limit to {limit:.2f} Mbps"
+                        f"[DRY RUN] Would change user {user_id} from {old_limit:.2f} Mbps to {limit:.2f} Mbps"
                     )
+                    if abs(old_limit - limit) > 0 and user_id in external_streamers:
+                        session = external_streamers[user_id].get('session_data')
+                        if session and session.get('NowPlayingItem'):
+                            self.logger.info(
+                                f"[DRY RUN] Would restart stream for user {user_id} (session {session.get('Id')})"
+                            )
                     continue
 
                 changed = self.jellyfin.set_user_bandwidth_limit(user_id, limit)
@@ -245,7 +254,7 @@ class JellyDemon:
             if self.config.daemon.backup_user_settings:
                 try:
                     if self.config.daemon.dry_run:
-                        self.logger.info("[DRY RUN] Would restore user bandwidth limits")
+                        self.logger.info("[DRY RUN] Would restore user bandwidth limits to original values")
                     else:
                         restored = self.jellyfin.restore_user_bandwidth_limits()
                         if restored:
